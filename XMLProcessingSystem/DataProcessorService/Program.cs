@@ -12,10 +12,10 @@ builder.Services.AddHostedService<DataProcessingWorker>();
 
 var host = builder.Build();
 
-using (var scope = host.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
-}
+//using (var scope = host.Services.CreateScope())
+//{
+//    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+//    db.Database.EnsureCreated();
+//}
 
 host.Run();
