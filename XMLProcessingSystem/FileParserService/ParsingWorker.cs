@@ -12,7 +12,7 @@ namespace FileParserService
     {
         private readonly IConnection _connection;
         private readonly string _queueName = "modules";
-        private readonly string _inputDirectory = Directory.GetCurrentDirectory();
+        private readonly string _inputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "input");
         private readonly XmlSerializer _serializer;
         private readonly ILogger<ParsingWorker> _logger;
 
@@ -32,7 +32,8 @@ namespace FileParserService
             await setupChannel.QueueDeclareAsync(queue: _queueName, 
                                                  durable: true, 
                                                  exclusive: false, 
-                                                 autoDelete: false);
+                                                 autoDelete: false, 
+                                                 cancellationToken: stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)
             {

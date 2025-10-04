@@ -17,6 +17,7 @@ services:
       - rabbitmq
     environment:
       - DOTNET_RUNNING_IN_CONTAINER=true
+      - DOTNET_ENVIRONMENT=Production
     networks:
       - xmlnet
 
@@ -29,6 +30,9 @@ services:
       - rabbitmq
     environment:
       - DOTNET_RUNNING_IN_CONTAINER=true
+      - DOTNET_ENVIRONMENT=Production
+    volumes:
+      - ./FileParserService/input:/app/input  
     networks:
       - xmlnet
 

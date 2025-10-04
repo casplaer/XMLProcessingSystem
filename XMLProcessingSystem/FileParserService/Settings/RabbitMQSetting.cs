@@ -1,7 +1,4 @@
-﻿using Microsoft.Extensions.Options;
-using RabbitMQ.Client.Exceptions;
-
-namespace FileParserService.Settings
+﻿namespace FileParserService.Settings
 {
     public class RabbitMQSetting 
     {
