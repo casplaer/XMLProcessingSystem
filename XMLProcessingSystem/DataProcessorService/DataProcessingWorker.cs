@@ -1,4 +1,6 @@
 using DataProcessorService.Data;
+using DataProcessorService.Settings;
+using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System.Text;
@@ -11,17 +13,19 @@ namespace DataProcessorService
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly IConnection _connection;
-        private readonly string _queueName = "modules";
+        private readonly string _queueName;
         private readonly ILogger<DataProcessingWorker> _logger;
 
         private readonly SemaphoreSlim _parallelism = new(10);
 
         public DataProcessingWorker(
+            IOptions<RabbitMQSetting> rabbitMqSetting,
             IServiceProvider serviceProvider,
             IConnection connection,
             ILogger<DataProcessingWorker> logger)
         {
             _serviceProvider = serviceProvider;
+            _queueName = rabbitMqSetting.Value.QueueName ?? "modules";
             _connection = connection;
             _logger = logger;
         }

@@ -1,4 +1,6 @@
 using FileParserService.Dto;
+using FileParserService.Settings;
+using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using System.Runtime.Serialization;
 using System.Text;
@@ -11,17 +13,19 @@ namespace FileParserService
     public class ParsingWorker : BackgroundService
     {
         private readonly IConnection _connection;
-        private readonly string _queueName = "modules";
+        private readonly string _queueName;
         private readonly string _inputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "input");
         private readonly XmlSerializer _serializer;
         private readonly ILogger<ParsingWorker> _logger;
 
         public ParsingWorker(
+            IOptions<RabbitMQSetting> rabbitMqSetting,
             IConnection connection, 
             XmlSerializer serializer,
             ILogger<ParsingWorker> logger)
         {
             _connection = connection;
+            _queueName = rabbitMqSetting.Value.QueueName ?? "modules";
             _serializer = serializer;
             _logger = logger;
         }

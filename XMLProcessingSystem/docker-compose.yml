@@ -18,6 +18,11 @@ services:
     environment:
       - DOTNET_RUNNING_IN_CONTAINER=true
       - DOTNET_ENVIRONMENT=Production
+      - RabbitMQ__Host=${RABBITMQ_HOST:-rabbitmq}
+      - RabbitMQ__Port=${RABBITMQ_PORT:-5672}
+      - RabbitMQ__Username=${RABBITMQ_USERNAME:-guest}
+      - RabbitMQ__Password=${RABBITMQ_PASSWORD:-guest}
+      - RabbitMQ__QueueName=${RABBITMQ_QUEUE_NAME:-instrument_status}
     networks:
       - xmlnet
 
@@ -31,6 +36,12 @@ services:
     environment:
       - DOTNET_RUNNING_IN_CONTAINER=true
       - DOTNET_ENVIRONMENT=Production
+      - RabbitMQ__Host=${RABBITMQ_HOST:-rabbitmq}
+      - RabbitMQ__Port=${RABBITMQ_PORT:-5672}
+      - RabbitMQ__Username=${RABBITMQ_USERNAME:-guest}
+      - RabbitMQ__Password=${RABBITMQ_PASSWORD:-guest}
+      - RabbitMQ__QueueName=${RABBITMQ_QUEUE_NAME:-instrument_status}
+      - FileProcessing__InputDirectory=${FILEPARSER_INPUT_DIR:-/app/input}
     volumes:
       - ./FileParserService/input:/app/input  
     networks:

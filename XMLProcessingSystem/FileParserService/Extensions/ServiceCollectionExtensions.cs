@@ -18,6 +18,7 @@ namespace FileParserService.Extensions
                 return new ConnectionFactory
                 {
                     HostName = rabbitMQSettings.HostName,
+                    Port = rabbitMQSettings.Port,
                     UserName = rabbitMQSettings.UserName,
                     Password = rabbitMQSettings.Password
                 };
