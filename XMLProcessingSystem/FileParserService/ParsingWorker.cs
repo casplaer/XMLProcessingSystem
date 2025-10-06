@@ -1,6 +1,8 @@
 using FileParserService.Dto;
+using RabbitMQ.Client;
 using System.Runtime.Serialization;
-using System.Xml;
+using System.Text;
+using System.Text.Json;
 using System.Xml.Linq;
 using System.Xml.Serialization;
 
@@ -8,27 +10,74 @@ namespace FileParserService
 {
     public class ParsingWorker : BackgroundService
     {
+        private readonly IConnection _connection;
+        private readonly string _queueName = "modules";
+        private readonly string _inputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "input");
+        private readonly XmlSerializer _serializer;
         private readonly ILogger<ParsingWorker> _logger;
 
-        public ParsingWorker(ILogger<ParsingWorker> logger)
+        public ParsingWorker(
+            IConnection connection, 
+            XmlSerializer serializer,
+            ILogger<ParsingWorker> logger)
         {
+            _connection = connection;
+            _serializer = serializer;
             _logger = logger;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            XmlSerializer serializer = new(typeof(InstrumentStatusDto));
+            using var setupChannel = await _connection.CreateChannelAsync();
+            await setupChannel.QueueDeclareAsync(queue: _queueName, 
+                                                 durable: true, 
+                                                 exclusive: false, 
+                                                 autoDelete: false, 
+                                                 cancellationToken: stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                var fileBytes = File.ReadAllBytes("status.xml");
+                try
+                {
+                    var xmlFiles = Directory.GetFiles(_inputDirectory, searchPattern: "*.xml");
+                    if (xmlFiles.Length == 0)
+                    {
+                        _logger.LogInformation("No XML files found. Waiting...");
+                        await Task.Delay(1000, stoppingToken);
+                        continue;
+                    }
 
-                var ms = new MemoryStream(fileBytes);
+                    _logger.LogInformation($"Found {xmlFiles.Length} XML files to process.");
 
-                var parsedInstrumentStatus = serializer.Deserialize(ms) as InstrumentStatusDto
-                        ?? throw new SerializationException("Provided XML does not match InstrumentStatusDto schema.");
+                    var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }; 
+                    await Parallel.ForEachAsync(xmlFiles, parallelOptions, async (filePath, ct) =>
+                    {
+                        await ProcessFileAsync(filePath, ct);
+                    });
 
-                _logger.LogInformation($"Processing package {parsedInstrumentStatus.PackageID}.");
+                    await Task.Delay(1000, stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error during file processing cycle.");
+                    await Task.Delay(1000, stoppingToken);
+                }
+            }
+        }
+
+        private async Task ProcessFileAsync(string filePath, CancellationToken ct)
+        {
+            try
+            {
+                _logger.LogInformation($"Starting processing of file: {filePath}.");
+
+                var fileBytes = await File.ReadAllBytesAsync(filePath, ct);
+
+                using var ms = new MemoryStream(fileBytes);
+                var parsedInstrumentStatus = _serializer.Deserialize(ms) as InstrumentStatusDto
+                    ?? throw new SerializationException("Provided XML does not match InstrumentStatusDto schema.");
+
+                _logger.LogInformation($"Processing package {parsedInstrumentStatus.PackageID} from file {filePath}.");
 
                 foreach (var device in parsedInstrumentStatus.Devices)
                 {
@@ -48,7 +97,7 @@ namespace FileParserService
                     {
                         _logger.LogInformation($"Previous value of ModuleState for {device.ModuleCategoryId} {device.IndexWithinRole}: {moduleStateElement.Value}.");
 
-                        var states = new[]{ "Online", "Run", "NotReady", "Offline" };
+                        var states = new[] { "Online", "Run", "NotReady", "Offline" };
                         var rnd = new Random();
 
                         moduleStateElement.Value = states[rnd.Next(states.Length)];
@@ -59,7 +108,18 @@ namespace FileParserService
                     device.RapidControlStatusXml = rapidControlDoc.ToString();
                 }
 
-                await Task.Delay(1000, stoppingToken);
+                var instrumentStatusJson = JsonSerializer.Serialize(parsedInstrumentStatus);
+
+                await using var channel = await _connection.CreateChannelAsync();
+                var body = Encoding.UTF8.GetBytes(instrumentStatusJson);
+
+                await channel.BasicPublishAsync(exchange: "", routingKey: _queueName, body: body);
+
+                _logger.LogInformation($"Published processed data from {filePath} to RabbitMQ queue {_queueName}.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error processing file {filePath}.");
             }
         }
     }

@@ -1,0 +1,41 @@
+services:
+  rabbitmq:
+    image: rabbitmq:latest
+    container_name: lab-rabbit
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - xmlnet
+
+  dataprocessor:
+    build:
+      context: .
+      dockerfile: DataProcessorService/Dockerfile
+    container_name: dataprocessor
+    depends_on:
+      - rabbitmq
+    environment:
+      - DOTNET_RUNNING_IN_CONTAINER=true
+      - DOTNET_ENVIRONMENT=Production
+    networks:
+      - xmlnet
+
+  fileparser:
+    build:
+      context: .
+      dockerfile: FileParserService/Dockerfile
+    container_name: fileparser
+    depends_on:
+      - rabbitmq
+    environment:
+      - DOTNET_RUNNING_IN_CONTAINER=true
+      - DOTNET_ENVIRONMENT=Production
+    volumes:
+      - ./FileParserService/input:/app/input  
+    networks:
+      - xmlnet
+
+networks:
+  xmlnet:
+    driver: bridge
