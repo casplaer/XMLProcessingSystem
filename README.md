@@ -25,7 +25,7 @@ git clone https://github.com/casplaer/XMLProcessingSystem
 ### 2. Open the root directory in Terminal or VS Code.
 
 ```
-cd XMLProcessingSystem
+cd XMLProcessingSystem\XMLProcessingSystem
 ```
 
 ### 3. Insert Test XML Files
