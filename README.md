@@ -28,15 +28,23 @@ git clone https://github.com/casplaer/XMLProcessingSystem
 cd XMLProcessingSystem
 ```
 
-### 3. Copy Test XML Files
+### 3. Insert Test XML Files
 
 The repository includes test XML file (`status.xml`) in FileParserService/input. Copy it to the input directory if needed.
 
+#### TO INCLUDE YOUR OWN TEST FILES PUT THEM INTO INPUT DIRECTORY. DEFAULT INPUT DIRECTORY IS `FileParserService/input`.
+
+Optionaly, if you have `dotnet` installed you can use file managing cli:
+```
+cd FileManagerCli
+dotnet run
+```
+
 ### 4. Configure Environment Variables
-Create a .env file in the root of the project to configure RabbitMQ and database settings. See the section below for the .env file structure.
+Create a `.env` file in the root of the project to configure RabbitMQ and database settings. See the section below for the `.env` file structure.
 
 ### ⚙️ Environment Variables (.env File)
-The project uses a .env file to configure RabbitMQ and database paths. Create a `.env` file in the root directory.
+The project uses a `.env` file to configure RabbitMQ and database paths. Create a `.env` file in the root directory.
 
 
 ### Example variables for `.env`:
