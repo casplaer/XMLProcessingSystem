@@ -34,7 +34,7 @@ namespace FileParserService
             _serializer = serializer;
             _logger = logger;
 
-            _invalidDirectory = Path.Combine(_inputDirectory, "input");
+            _invalidDirectory = Path.Combine(_inputDirectory, "invalid_files");
 
             _publishRetryPolicy = Policy
                 .Handle<BrokerUnreachableException>()
@@ -172,6 +172,10 @@ namespace FileParserService
             {
                 var fileName = Path.GetFileName(filePath);
                 var destPath = Path.Combine(_invalidDirectory, fileName);
+                if (!Directory.Exists(_invalidDirectory))
+                {
+                    Directory.CreateDirectory(_invalidDirectory);
+                }
                 File.Move(filePath, destPath, overwrite: true);
                 _logger.LogInformation($"File {fileName} moved to {_invalidDirectory}.");
             }
