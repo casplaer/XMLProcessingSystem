@@ -19,16 +19,10 @@ class Program
                 throw new InvalidOperationException("Variable FILEPARSER_INPUT_DIR not set in .env");
             }
 
-            inputDir = Environment.GetEnvironmentVariable("FILEPARSER_INPUT_DIR");
-            if (string.IsNullOrWhiteSpace(inputDir))
-            {
-                throw new InvalidOperationException("Переменная FILEPARSER_INPUT_DIR не задана в .env");
-            }
-
             inputDir = Path.GetFullPath(Path.Combine(solutionRoot, inputDir));
             if (!IsValidPath(inputDir))
             {
-                throw new InvalidOperationException($"Некорректный путь в FILEPARSER_INPUT_DIR: {inputDir}");
+                throw new InvalidOperationException($"Incorrect path in FILEPARSER_INPUT_DIR: {inputDir}");
             }
         }
         catch (Exception ex)
