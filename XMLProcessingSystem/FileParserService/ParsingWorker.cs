@@ -18,6 +18,7 @@ namespace FileParserService
         private readonly IConnection _connection;
         private readonly string _queueName;
         private readonly string _inputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "input");
+        private readonly string _invalidDirectory;
         private readonly XmlSerializer _serializer;
         private readonly ILogger<ParsingWorker> _logger;
         private readonly IAsyncPolicy _publishRetryPolicy;
@@ -32,6 +33,8 @@ namespace FileParserService
             _queueName = rabbitMqSetting.Value.QueueName ?? "modules";
             _serializer = serializer;
             _logger = logger;
+
+            _invalidDirectory = Path.Combine(_inputDirectory, "input");
 
             _publishRetryPolicy = Policy
                 .Handle<BrokerUnreachableException>()
@@ -51,6 +54,8 @@ namespace FileParserService
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            Directory.CreateDirectory(_invalidDirectory);
+
             using var setupChannel = await _connection.CreateChannelAsync();
             await setupChannel.QueueDeclareAsync(queue: _queueName,
                                                  durable: true,
@@ -150,9 +155,29 @@ namespace FileParserService
 
                 _logger.LogInformation($"Published processed data from {filePath} to RabbitMQ queue {_queueName}.");
             }
+            catch (SerializationException ex)
+            {
+                _logger.LogError(ex, $"Invalid file {filePath}. Moving to {_invalidDirectory}.");
+                MoveToInvalidDirectory(filePath);
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error processing file {filePath}.");
+            }
+        }
+
+        private void MoveToInvalidDirectory(string filePath)
+        {
+            try
+            {
+                var fileName = Path.GetFileName(filePath);
+                var destPath = Path.Combine(_invalidDirectory, fileName);
+                File.Move(filePath, destPath, overwrite: true);
+                _logger.LogInformation($"File {fileName} moved to {_invalidDirectory}.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Failed to move file {filePath} to {_invalidDirectory}.");
             }
         }
     }
