@@ -2,14 +2,15 @@ using FileParserService.Common.Helpers;
 using FileParserService.Dto;
 using FileParserService.Settings;
 using Microsoft.Extensions.Options;
+using Polly;
 using RabbitMQ.Client;
+using RabbitMQ.Client.Exceptions;
 using System.Runtime.Serialization;
 using System.Text;
 using System.Text.Json;
+using System.Xml;
 using System.Xml.Linq;
 using System.Xml.Serialization;
-using Polly;
-using RabbitMQ.Client.Exceptions;
 
 namespace FileParserService
 {
@@ -158,6 +159,16 @@ namespace FileParserService
             catch (SerializationException ex)
             {
                 _logger.LogError(ex, $"Invalid file {filePath}. Moving to {_invalidDirectory}.");
+                MoveToInvalidDirectory(filePath);
+            }
+            catch (InvalidOperationException ex) when (ex.InnerException is XmlException)
+            {
+                _logger.LogError(ex, $"Invalid XML structure in file {filePath}. Moving to {_invalidDirectory}.");
+                MoveToInvalidDirectory(filePath);
+            }
+            catch (XmlException ex)
+            {
+                _logger.LogError(ex, $"Invalid XML structure in file {filePath}. Moving to {_invalidDirectory}.");
                 MoveToInvalidDirectory(filePath);
             }
             catch (Exception ex)
