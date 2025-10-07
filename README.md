@@ -67,7 +67,7 @@ DEFAULT_CONNECTION=Data Source=/app/data/modules.db
 
 ### 5. Build and Run with Docker Compose
 
-Build and start all services (rabbitmq, fileparser, dataprocessor):
+Build and start all services (`rabbitmq`, `fileparser`, `dataprocessor`):
 ```
 docker-compose build --no-cache
 docker-compose up -d
