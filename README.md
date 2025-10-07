@@ -43,7 +43,7 @@ dotnet run
 ### 4. Configure Environment Variables
 Create a `.env` file in the root of the project to configure RabbitMQ and database settings. See the section below for the `.env` file structure.
 
-### ⚙️ Environment Variables (.env File)
+### ⚙️ Environment Variables (`.env` File)
 The project uses a `.env` file to configure RabbitMQ and database paths. Create a `.env` file in the root directory.
 
 
