@@ -34,7 +34,7 @@ namespace FileParserService
             _serializer = serializer;
             _logger = logger;
 
-            _invalidDirectory = Path.Combine(_inputDirectory, "input");
+            _invalidDirectory = Path.Combine(_inputDirectory, "invalid_files");
 
             _publishRetryPolicy = Policy
                 .Handle<BrokerUnreachableException>()
