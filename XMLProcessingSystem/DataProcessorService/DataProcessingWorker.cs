@@ -1,11 +1,15 @@
 using DataProcessorService.Data;
 using DataProcessorService.Settings;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
+using Polly;
+using Polly.Retry;
+using System.Data.Common;
 
 namespace DataProcessorService
 {
@@ -17,6 +21,7 @@ namespace DataProcessorService
         private readonly ILogger<DataProcessingWorker> _logger;
 
         private readonly SemaphoreSlim _parallelism = new(10);
+        private readonly AsyncRetryPolicy _dbRetryPolicy;
 
         public DataProcessingWorker(
             IOptions<RabbitMQSetting> rabbitMqSetting,
@@ -28,6 +33,19 @@ namespace DataProcessorService
             _queueName = rabbitMqSetting.Value.QueueName ?? "modules";
             _connection = connection;
             _logger = logger;
+
+            _dbRetryPolicy = Policy
+                .Handle<DbUpdateException>()
+                .Or<DbException>()
+                .WaitAndRetryAsync(
+                    retryCount: 5,
+                    sleepDurationProvider: attempt =>
+                        TimeSpan.FromMilliseconds(Math.Min(2000, Math.Pow(2, attempt) * 100)) +
+                        TimeSpan.FromMilliseconds(Random.Shared.Next(0, 250)),
+                    onRetry: (ex, delay, attempt) =>
+                    {
+                        _logger.LogWarning(ex, "Transient DB error on attempt {Attempt}. Retrying in {Delay}.", attempt, delay);
+                    });
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -50,34 +68,39 @@ namespace DataProcessorService
                 var body = ea.Body.ToArray();
                 var message = Encoding.UTF8.GetString(body);
 
-                if (message != null)
+                if (string.IsNullOrEmpty(message))
                 {
-                    await _parallelism.WaitAsync();
+                    _logger.LogWarning("Received empty message, rejecting.");
+                    await setupChannel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false);
+                    return;
+                }
 
-                    _ = Task.Run(async () =>
+                await _parallelism.WaitAsync(stoppingToken);
+                try
+                {
+                    _logger.LogInformation(" [x] Processing message...");
+
+                    await _dbRetryPolicy.ExecuteAsync(async () =>
                     {
                         using var scope = _serviceProvider.CreateScope();
                         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-                        try
-                        {
-                            _logger.LogInformation(" [x] Processing message...");
-                            await SaveModuleDataAsync(message, dbContext);
-                            await setupChannel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Error processing message");
-                            await setupChannel.BasicNackAsync(ea.DeliveryTag, false, true);
-                        }
-                        finally
-                        {
-                            _parallelism.Release();
-                        }
+                        await SaveModuleDataAsync(message, dbContext);
                     });
-                }
 
-                await setupChannel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
+                    _logger.LogInformation(" [x] Message processed successfully!");
+
+                    await setupChannel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, " [x] Error processing message");
+                    await setupChannel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
+                }
+                finally
+                {
+                    _parallelism.Release();
+                }
             };
 
             await setupChannel.BasicConsumeAsync(_queueName, autoAck: false, consumer: consumer);
@@ -96,6 +119,9 @@ namespace DataProcessorService
         {
             using var doc = JsonDocument.Parse(message);
             var devices = doc.RootElement.GetProperty("Devices").EnumerateArray();
+            var packageId = doc.RootElement.GetProperty("PackageID").GetString();
+
+            _logger.LogInformation($"Processing package {packageId}");
 
             foreach (var device in devices)
             {
@@ -108,7 +134,7 @@ namespace DataProcessorService
                     continue;
                 }
 
-                var indexWithinRole = device.GetProperty("IndexWithinRole").GetInt16();
+                int? indexWithinRole = device.GetProperty("IndexWithinRole").GetInt16();
                 var rapidControlStatusXml = device.GetProperty("RapidControlStatusXml").GetString();
 
                 if (!string.IsNullOrEmpty(rapidControlStatusXml))
@@ -119,16 +145,42 @@ namespace DataProcessorService
                     if (moduleState == null)
                     {
                         _logger.LogWarning($"ModuleState not found for {moduleCategoryId} {indexWithinRole}");
+
                         continue;
                     }
 
-                    var newModuleEntity = new Module()
-                    {
-                        ModuleCategoryID = moduleCategoryId,
-                        ModuleState = moduleState
-                    };
+                    var moduleEntity = await dbContext.Modules
+                                                      .Where(m => m.ModuleCategoryID == moduleCategoryId &&
+                                                                  m.IndexWithinRole == indexWithinRole &&
+                                                                  m.PackageID == packageId)
+                                                      .FirstOrDefaultAsync();
 
-                    dbContext.Modules.Add(newModuleEntity);
+                    if (moduleEntity == null)
+                    {
+                        _logger.LogInformation($"No Module with ID {moduleCategoryId} found. Creating new entity.");
+
+                        moduleEntity ??= new Module()
+                        {
+                            ModuleCategoryID = moduleCategoryId,
+                            ModuleState = moduleState,
+                            IndexWithinRole = indexWithinRole,
+                            PackageID = packageId
+                        };
+                        
+                        dbContext.Modules.Add(moduleEntity);
+
+                        _logger.LogInformation($"Successfully created {moduleCategoryId} {indexWithinRole} {moduleState} db entity.");
+                    }
+                    else
+                    {
+                        _logger.LogInformation($"Module with ID {moduleCategoryId} found. Updating module state.");
+
+                        moduleEntity.ModuleState = moduleState;
+
+                        dbContext.Update(moduleEntity);
+
+                        _logger.LogInformation($"Successfully updated module state of module {moduleCategoryId} {indexWithinRole} to {moduleState}.");
+                    }
                 }
             }
 
@@ -136,3 +188,4 @@ namespace DataProcessorService
         }
     }
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
