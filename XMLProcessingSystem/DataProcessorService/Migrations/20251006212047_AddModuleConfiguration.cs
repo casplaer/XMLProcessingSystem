@@ -10,14 +10,6 @@ namespace DataProcessorService.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropPrimaryKey(
-                name: "PK_Modules",
-                table: "Modules");
-
-            migrationBuilder.RenameTable(
-                name: "Modules",
-                newName: "modules");
-
             migrationBuilder.RenameColumn(
                 name: "ModuleState",
                 table: "modules",
@@ -57,10 +49,6 @@ namespace DataProcessorService.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropPrimaryKey(
-                name: "PK_modules",
-                table: "modules");
-
             migrationBuilder.DropIndex(
                 name: "IX_modules_package_id_module_category_id_index_within_role",
                 table: "modules");
@@ -75,21 +63,21 @@ namespace DataProcessorService.Migrations
 
             migrationBuilder.RenameTable(
                 name: "modules",
-                newName: "Modules");
+                newName: "modules");
 
             migrationBuilder.RenameColumn(
                 name: "module_state",
-                table: "Modules",
+                table: "modules",
                 newName: "ModuleState");
 
             migrationBuilder.RenameColumn(
                 name: "module_category_id",
-                table: "Modules",
+                table: "modules",
                 newName: "ModuleCategoryID");
 
             migrationBuilder.AddPrimaryKey(
                 name: "PK_Modules",
-                table: "Modules",
+                table: "modules",
                 column: "Id");
         }
     }
