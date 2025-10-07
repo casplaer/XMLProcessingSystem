@@ -1,0 +1,67 @@
+services:
+  rabbitmq:
+    image: rabbitmq:latest
+    container_name: lab-rabbit
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - xmlnet
+
+  dataprocessor:
+    build:
+      context: .
+      dockerfile: DataProcessorService/Dockerfile
+    container_name: dataprocessor
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - DOTNET_RUNNING_IN_CONTAINER=true
+      - DOTNET_ENVIRONMENT=Production
+      - RabbitMQ__HostName=${RABBITMQ_HOST:-lab-rabbit}
+      - RabbitMQ__Port=${RABBITMQ_PORT:-5672}
+      - RabbitMQ__Username=${RABBITMQ_USERNAME:-guest}
+      - RabbitMQ__Password=${RABBITMQ_PASSWORD:-guest}
+      - RabbitMQ__QueueName=${RABBITMQ_QUEUE_NAME:-modules}
+      - RabbitMQ__AutomaticRecoveryEnabled=${RABBITMQ_AUTOMATIC_RECOVERY_ENABLED:-true}
+      - RabbitMQ__TopologyRecoveryEnabled=${RABBITMQ_TOPOLOGY_RECOVERY_ENABLED:-true}
+      - RabbitMQ__NetworkRecoveryInterval=${RABBITMQ_NETWORK_RECOVERY_INTERVAL:-5}
+      - ConnectionStrings__DefaultConnection=${DEFAULT_CONNECTION:-Data Source=/app/data/modules.db}
+    volumes:
+      - ${DATAPROCESSOR_DB_DIR:-./DataProcessorService/data}:/app/data 
+    networks:
+      - xmlnet
+
+  fileparser:
+    build:
+      context: .
+      dockerfile: FileParserService/Dockerfile
+    container_name: fileparser
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - DOTNET_RUNNING_IN_CONTAINER=true
+      - DOTNET_ENVIRONMENT=Production
+      - RabbitMQ__HostName=${RABBITMQ_HOST:-lab-rabbit}
+      - RabbitMQ__Port=${RABBITMQ_PORT:-5672}
+      - RabbitMQ__Username=${RABBITMQ_USERNAME:-guest}
+      - RabbitMQ__Password=${RABBITMQ_PASSWORD:-guest}
+      - RabbitMQ__QueueName=${RABBITMQ_QUEUE_NAME:-modules}
+      - RabbitMQ__AutomaticRecoveryEnabled=${RABBITMQ_AUTOMATIC_RECOVERY_ENABLED:-true}
+      - RabbitMQ__TopologyRecoveryEnabled=${RABBITMQ_TOPOLOGY_RECOVERY_ENABLED:-true}
+      - RabbitMQ__NetworkRecoveryInterval=${RABBITMQ_NETWORK_RECOVERY_INTERVAL:-5}
+    volumes:
+      - ${FILEPARSER_INPUT_DIR:-./FileParserService/input}:/app/input  
+    networks:
+      - xmlnet
+
+networks:
+  xmlnet:
+    driver: bridge
