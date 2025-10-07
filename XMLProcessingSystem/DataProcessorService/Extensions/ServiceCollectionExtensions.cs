@@ -18,8 +18,12 @@ namespace DataProcessorService.Extensions
                 return new ConnectionFactory
                 {
                     HostName = rabbitMQSettings.HostName,
+                    Port = rabbitMQSettings.Port,
                     UserName = rabbitMQSettings.UserName,
-                    Password = rabbitMQSettings.Password
+                    Password = rabbitMQSettings.Password,
+                    AutomaticRecoveryEnabled = rabbitMQSettings.AutomaticRecoveryEnabled,
+                    TopologyRecoveryEnabled = rabbitMQSettings.TopologyRecoveryEnabled,
+                    NetworkRecoveryInterval = TimeSpan.FromSeconds(rabbitMQSettings.NetworkRecoveryInterval)
                 };
             });
 

@@ -12,7 +12,7 @@ namespace DataProcessorService.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
-                name: "Modules",
+                name: "modules",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
@@ -29,7 +29,7 @@ namespace DataProcessorService.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "Modules");
+                name: "modules");
         }
     }
 }

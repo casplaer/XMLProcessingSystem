@@ -1,38 +1,61 @@
+using FileParserService.Common.Helpers;
 using FileParserService.Dto;
+using FileParserService.Settings;
+using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using System.Runtime.Serialization;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
 using System.Xml.Serialization;
+using Polly;
+using RabbitMQ.Client.Exceptions;
 
 namespace FileParserService
 {
     public class ParsingWorker : BackgroundService
     {
         private readonly IConnection _connection;
-        private readonly string _queueName = "modules";
+        private readonly string _queueName;
         private readonly string _inputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "input");
         private readonly XmlSerializer _serializer;
         private readonly ILogger<ParsingWorker> _logger;
+        private readonly IAsyncPolicy _publishRetryPolicy;
 
         public ParsingWorker(
-            IConnection connection, 
+            IOptions<RabbitMQSetting> rabbitMqSetting,
+            IConnection connection,
             XmlSerializer serializer,
             ILogger<ParsingWorker> logger)
         {
             _connection = connection;
+            _queueName = rabbitMqSetting.Value.QueueName ?? "modules";
             _serializer = serializer;
             _logger = logger;
+
+            _publishRetryPolicy = Policy
+                .Handle<BrokerUnreachableException>()
+                .Or<AlreadyClosedException>()
+                .Or<OperationInterruptedException>()
+                .Or<TimeoutException>()
+                .WaitAndRetryAsync(
+                    retryCount: 5,
+                    sleepDurationProvider: attempt =>
+                        TimeSpan.FromMilliseconds(Math.Min(2000, Math.Pow(2, attempt) * 100)) +
+                        TimeSpan.FromMilliseconds(Random.Shared.Next(0, 250)),
+                    onRetry: (ex, delay, attempt) =>
+                    {
+                        _logger.LogWarning(ex, "Publish retry {Attempt} in {Delay}.", attempt, delay);
+                    });
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             using var setupChannel = await _connection.CreateChannelAsync();
-            await setupChannel.QueueDeclareAsync(queue: _queueName, 
-                                                 durable: true, 
-                                                 exclusive: false, 
-                                                 autoDelete: false, 
+            await setupChannel.QueueDeclareAsync(queue: _queueName,
+                                                 durable: true,
+                                                 exclusive: false,
+                                                 autoDelete: false,
                                                  cancellationToken: stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)
@@ -49,7 +72,7 @@ namespace FileParserService
 
                     _logger.LogInformation($"Found {xmlFiles.Length} XML files to process.");
 
-                    var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }; 
+                    var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 };
                     await Parallel.ForEachAsync(xmlFiles, parallelOptions, async (filePath, ct) =>
                     {
                         await ProcessFileAsync(filePath, ct);
@@ -77,6 +100,14 @@ namespace FileParserService
                 var parsedInstrumentStatus = _serializer.Deserialize(ms) as InstrumentStatusDto
                     ?? throw new SerializationException("Provided XML does not match InstrumentStatusDto schema.");
 
+                var validationResult = InstrumentStatusValidator.ValidateInstrumentStatusDto(parsedInstrumentStatus);
+
+                if (!validationResult.IsValid)
+                {
+                    throw new SerializationException(validationResult.Message);
+                }
+                _logger.LogInformation("Successfully validated PackageID: {PackageID}", parsedInstrumentStatus.PackageID);
+
                 _logger.LogInformation($"Processing package {parsedInstrumentStatus.PackageID} from file {filePath}.");
 
                 foreach (var device in parsedInstrumentStatus.Devices)
@@ -98,22 +129,24 @@ namespace FileParserService
                         _logger.LogInformation($"Previous value of ModuleState for {device.ModuleCategoryId} {device.IndexWithinRole}: {moduleStateElement.Value}.");
 
                         var states = new[] { "Online", "Run", "NotReady", "Offline" };
-                        var rnd = new Random();
 
-                        moduleStateElement.Value = states[rnd.Next(states.Length)];
+                        var newValue = states[Random.Shared.Next(states.Length)];
 
-                        _logger.LogInformation($"New value of ModuleState for {device.ModuleCategoryId} {device.IndexWithinRole}: {moduleStateElement.Value}.");
+                        moduleStateElement.Value = newValue;
+
+                        _logger.LogInformation($"New value of ModuleState for {device.ModuleCategoryId} {device.IndexWithinRole}: {newValue}.");
                     }
 
                     device.RapidControlStatusXml = rapidControlDoc.ToString();
                 }
 
-                var instrumentStatusJson = JsonSerializer.Serialize(parsedInstrumentStatus);
+                var instrumentStatusJson = JsonSerializer.SerializeToUtf8Bytes(parsedInstrumentStatus);
 
-                await using var channel = await _connection.CreateChannelAsync();
-                var body = Encoding.UTF8.GetBytes(instrumentStatusJson);
-
-                await channel.BasicPublishAsync(exchange: "", routingKey: _queueName, body: body);
+                await _publishRetryPolicy.ExecuteAsync(async () =>
+                {
+                    await using var channel = await _connection.CreateChannelAsync();
+                    await channel.BasicPublishAsync(exchange: "", routingKey: _queueName, body: instrumentStatusJson);
+                });
 
                 _logger.LogInformation($"Published processed data from {filePath} to RabbitMQ queue {_queueName}.");
             }
