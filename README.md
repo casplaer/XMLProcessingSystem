@@ -44,7 +44,7 @@ dotnet run
 Create a `.env` file in the root of the project to configure RabbitMQ and database settings. See the section below for the `.env` file structure.
 
 ### ⚙️ Environment Variables (`.env` File)
-The project uses a `.env` file to configure RabbitMQ and database paths. Create a `.env` file in the root directory.
+The project uses a `.env` file to configure RabbitMQ and database paths. Create a `.env` file in the root directory (same dir as `docker-compose` file).
 
 
 ### Example variables for `.env`:
